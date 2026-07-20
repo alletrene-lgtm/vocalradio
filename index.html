@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192x192.png">
+<link rel="apple-touch-icon" href="icons/icon-192x192.png">
+<title>Vocal Radio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #0a0a14;
+    --surface: #12121f;
+    --border: #1e1e32;
+    --accent: #e8ff47;
+    --accent2: #47c8ff;
+    --accent3: #ff6b47;
+    --text: #f0f0f8;
+    --muted: #6a6a8a;
+    --active: #1a2a0a;
+    --active-border: #e8ff47;
+    --listening: #ff6b47;
+    --playing-glow: rgba(232,255,71,0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 24px 16px 100px;
+    min-height: 100vh;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-mark {
+    width: 44px;
+    height: 44px;
+    background: var(--accent);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .logo-mark svg { width: 24px; height: 24px; }
+
+  .header-text h1 {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .header-text p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-top: 3px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Status bar */
+  .status-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    transition: border-color 0.3s, background 0.3s;
+  }
+
+  .status-bar.listening {
+    border-color: var(--listening);
+    background: rgba(255,107,71,0.05);
+    animation: pulse-border 1.2s ease-in-out infinite;
+  }
+
+  .status-bar.playing {
+    border-color: var(--accent);
+    background: var(--playing-glow);
+  }
+
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,71,0.3); }
+    50% { box-shadow: 0 0 0 6px rgba(255,107,71,0); }
+  }
+
+  .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+
+  .status-dot.active { background: var(--accent); animation: blink 1s ease infinite; }
+  .status-dot.listening { background: var(--listening); animation: blink 0.6s ease infinite; }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  #status-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text);
+    line-height: 1.4;
+    flex: 1;
+  }
+
+  /* Section titles */
+  .section-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    margin-bottom: 12px;
+    padding-left: 4px;
+  }
+
+  /* Radio grid */
+  .radio-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 32px;
+  }
+
+  .radio-btn {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    position: relative;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .radio-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .radio-btn:active::before { opacity: 0.06; }
+
+  .radio-btn.playing {
+    border-color: var(--accent);
+    background: var(--active);
+  }
+
+  .radio-btn.playing .radio-name { color: var(--accent); }
+
+  .radio-btn:focus {
+    outline: 2px solid var(--accent2);
+    outline-offset: 2px;
+  }
+
+  .radio-emoji {
+    font-size: 1.4rem;
+    display: block;
+    margin-bottom: 8px;
+    line-height: 1;
+  }
+
+  .radio-name {
+    display: block;
+    font-weight: 700;
+    font-size: 0.9rem;
+    line-height: 1.2;
+    color: var(--text);
+    transition: color 0.2s;
+  }
+
+  .radio-desc {
+    display: block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--muted);
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .playing-indicator {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: none;
+    animation: blink 0.8s ease infinite;
+  }
+
+  .radio-btn.playing .playing-indicator { display: block; }
+
+  /* Controls */
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .ctrl-btn {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 14px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .ctrl-btn:focus { outline: 2px solid var(--accent2); outline-offset: 2px; }
+  .ctrl-btn:active { transform: scale(0.97); }
+
+  .ctrl-btn.mic-btn {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px;
+    border-color: var(--accent3);
+    background: rgba(255,107,71,0.05);
+  }
+
+  .ctrl-btn.mic-btn.active {
+    background: rgba(255,107,71,0.15);
+    border-color: var(--listening);
+    animation: pulse-border 1s ease-in-out infinite;
+  }
+
+  .ctrl-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .ctrl-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  .ctrl-btn.mic-btn .ctrl-label {
+    color: var(--text);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  /* Volume slider */
+  .volume-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+
+  .volume-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .volume-row span { font-size: 1.1rem; }
+
+  #volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  #volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  /* Help section */
+  .help-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+  }
+
+  .help-section h3 {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--accent2);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .cmd-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .cmd-list li {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .cmd-list li span:first-child {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  /* Waveform animation */
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 20px;
+  }
+
+  .wave-bar {
+    width: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+    animation: wave 1.2s ease-in-out infinite;
+  }
+
+  .wave-bar:nth-child(1) { animation-delay: 0s; height: 8px; }
+  .wave-bar:nth-child(2) { animation-delay: 0.1s; height: 14px; }
+  .wave-bar:nth-child(3) { animation-delay: 0.2s; height: 20px; }
+  .wave-bar:nth-child(4) { animation-delay: 0.3s; height: 14px; }
+  .wave-bar:nth-child(5) { animation-delay: 0.4s; height: 8px; }
+
+  @keyframes wave {
+    0%, 100% { transform: scaleY(0.4); }
+    50% { transform: scaleY(1); }
+  }
+
+  .waveform.hidden { display: none; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--text);
+    color: var(--bg);
+    padding: 12px 20px;
+    border-radius: 50px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 700;
+    z-index: 999;
+    transition: transform 0.3s ease;
+    white-space: nowrap;
+    max-width: 90vw;
+    text-align: center;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Skip link for accessibility */
+  .skip-link {
+    position: absolute;
+    top: -100px;
+    left: 8px;
+    background: var(--accent);
+    color: var(--bg);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    z-index: 9999;
+    transition: top 0.2s;
+  }
+  .skip-link:focus { top: 8px; }
+
+</style>
+</head>
+<body>
+
+<a href="#main-content" class="skip-link">Aller au contenu principal</a>
+<div class="toast" id="toast" aria-live="polite"></div>
+
+<div class="app" id="main-content">
+
+  <header>
+    <div class="logo-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="4" fill="#0a0a14"/>
+        <path d="M6.3 6.3a8 8 0 0 0 0 11.4" stroke="#0a0a14" stroke-width="2" stroke-linecap="round"/>
+        <path d="M17.7 6.3a8 8 0 0 1 0 11.4" stroke="#0a0a14" stroke-width="2" stroke-linecap="round"/>
+        <path d="M3 3a14.5 14.5 0 0 0 0 18" stroke="#0a0a14" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+        <path d="M21 3a14.5 14.5 0 0 1 0 18" stroke="#0a0a14" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+      </svg>
+    </div>
+    <div class="header-text">
+      <h1>Vocal Radio</h1>
+      <p>Lanceur vocal · Radio France</p>
+    </div>
+  </header>
+
+  <!-- Status -->
+  <div class="status-bar" id="status-bar" role="status" aria-live="polite" aria-atomic="true">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Appuyez sur le micro ou dites une radio</span>
+    <div class="waveform hidden" id="waveform" aria-hidden="true">
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+    </div>
+  </div>
+
+  <!-- Radios -->
+  <p class="section-title">Choisir une radio</p>
+  <div class="radio-grid" role="list" aria-label="Stations de radio disponibles">
+
+    <button class="radio-btn" data-id="inter" data-name="France Inter"
+      aria-label="France Inter. Généraliste"
+      role="listitem" onclick="selectRadio('inter')">
+      <div class="playing-indicator" aria-hidden="true"></div>
+      <span class="radio-emoji" aria-hidden="true">🎙️</span>
+      <span class="radio-name">France Inter</span>
+      <span class="radio-desc">Généraliste</span>
+    </button>
+
+    <button class="radio-btn" data-id="info" data-name="France Info"
+      aria-label="France Info. Actualités en continu"
+      role="listitem" onclick="selectRadio('info')">
+      <div class="playing-indicator" aria-hidden="true"></div>
+      <span class="radio-emoji" aria-hidden="true">📰</span>
+      <span class="radio-name">France Info</span>
+      <span class="radio-desc">Actu en continu</span>
+    </button>
+
+    <button class="radio-btn" data-id="culture" data-name="France Culture"
+      aria-label="France Culture. Culture et société"
+      role="listitem" onclick="selectRadio('culture')">
+      <div class="playing-indicator" aria-hidden="true"></div>
+      <span class="radio-emoji" aria-hidden="true">🎭</span>
+      <span class="radio-name">France Culture</span>
+      <span class="radio-desc">Culture</span>
+    </button>
+
+    <button class="radio-btn" data-id="musique" data-name="France Musique"
+      aria-label="France Musique. Musique classique"
+      role="listitem" onclick="selectRadio('musique')">
+      <div class="playing-indicator" aria-hidden="true"></div>
+      <span class="radio-emoji" aria-hidden="true">🎻</span>
+      <span class="radio-name">France Musique</span>
+      <span class="radio-desc">Classique</span>
+    </button>
+
+    <button class="radio-btn" data-id="bleu" data-name="France Bleu"
+      aria-label="France Bleu. Radio locale"
+      role="listitem" onclick="selectRadio('bleu')">
+      <div class="playing-indicator" aria-hidden="true"></div>
+      <span class="radio-emoji" aria-hidden="true">🗺️</span>
+      <span class="radio-name">France Bleu</span>
+      <span class="radio-desc">Locale</span>
+    </button>
+
+    <button class="radio-btn" data-id="fip" data-name="FIP"
+      aria-label="FIP. Musique éclectique"
+      role="listitem" onclick="selectRadio('fip')">
+      <div class="playing-indicator" aria-hidden="true"></div>
+      <span class="radio-emoji" aria-hidden="true">🎸</span>
+      <span class="radio-name">FIP</span>
+      <span class="radio-desc">Éclectique</span>
+    </button>
+
+  </div>
+
+  <!-- Commandes vocales -->
+  <p class="section-title">Contrôle vocal</p>
+  <div class="controls">
+    <button class="ctrl-btn mic-btn" id="mic-btn"
+      aria-label="Activer la reconnaissance vocale"
+      aria-pressed="false"
+      onclick="toggleMic()">
+      <span class="ctrl-icon" aria-hidden="true">🎤</span>
+      <span class="ctrl-label" id="mic-label">Parler</span>
+    </button>
+
+    <button class="ctrl-btn" aria-label="Arrêter la lecture" onclick="stopRadio()">
+      <span class="ctrl-icon" aria-hidden="true">⏹️</span>
+      <span class="ctrl-label">Stop</span>
+    </button>
+
+    <button class="ctrl-btn" aria-label="Vocaliser la liste des radios disponibles" onclick="speakMenu()">
+      <span class="ctrl-icon" aria-hidden="true">📢</span>
+      <span class="ctrl-label">Menu</span>
+    </button>
+  </div>
+
+  <!-- Volume -->
+  <div class="volume-section" aria-label="Contrôle du volume">
+    <div class="volume-row">
+      <span aria-hidden="true">🔈</span>
+      <input type="range" id="volume-slider" min="0" max="1" step="0.05" value="0.8"
+        aria-label="Volume" oninput="setVolume(this.value)">
+      <span aria-hidden="true">🔊</span>
+    </div>
+  </div>
+
+  <!-- Aide -->
+  <div class="help-section" aria-label="Commandes vocales disponibles">
+    <h3>🗣️ Commandes vocales</h3>
+    <ul class="cmd-list" aria-label="Liste des commandes">
+      <li><span>→</span><span>"France Inter", "France Info", "France Culture"…</span></li>
+      <li><span>→</span><span>"FIP", "France Musique", "France Bleu"</span></li>
+      <li><span>→</span><span>"Stop" ou "Arrêter" pour stopper</span></li>
+      <li><span>→</span><span>"Volume bas" / "Volume fort"</span></li>
+      <li><span>→</span><span>"Menu" pour entendre les radios</span></li>
+      <li><span>→</span><span>"Aide" pour réécouter ces commandes</span></li>
+    </ul>
+  </div>
+
+</div>
+
+<!-- Audio -->
+<audio id="audio-player" aria-label="Lecteur audio radio" preload="none"></audio>
+
+<script>
+// ============================================================
+// CONFIG RADIOS
+// ============================================================
+const RADIOS = {
+  inter:   { name: "France Inter",    url: "https://icecast.radiofrance.fr/franceinter-hifi.aac",   keywords: ["inter", "france inter"] },
+  info:    { name: "France Info",     url: "https://icecast.radiofrance.fr/franceinfo-hifi.aac",    keywords: ["info", "france info", "franceinfo"] },
+  culture: { name: "France Culture",  url: "https://icecast.radiofrance.fr/franceculture-hifi.aac", keywords: ["culture", "france culture"] },
+  musique: { name: "France Musique",  url: "https://icecast.radiofrance.fr/francemusique-hifi.aac", keywords: ["musique", "france musique", "classique"] },
+  bleu:    { name: "France Bleu",     url: "https://icecast.radiofrance.fr/francebleu-hifi.aac",    keywords: ["bleu", "france bleu", "locale"] },
+  fip:     { name: "FIP",             url: "https://icecast.radiofrance.fr/fip-hifi.aac",           keywords: ["fip", "eclectique", "éclectique"] },
+};
+
+// ============================================================
+// STATE
+// ============================================================
+let currentRadio = null;
+let isListening = false;
+let recognition = null;
+let wakeLock = null;
+let speakQueue = Promise.resolve();
+let autoRetryCount = 0;
+const MAX_AUTO_RETRIES = 3;
+
+// Relance automatique de l'écoute après un échec (silence ou non reconnu),
+// avec une limite pour ne pas écouter indéfiniment en cas de silence prolongé.
+function autoRelisten(message) {
+  autoRetryCount++;
+  if (autoRetryCount <= MAX_AUTO_RETRIES) {
+    speak(message).then(() => startListening());
+  } else {
+    autoRetryCount = 0;
+    setStatus('En attente — appuyez sur micro', 'idle');
+    speak('Appuyez sur le bouton micro pour réessayer.');
+  }
+}
+
+const audio = document.getElementById('audio-player');
+const statusBar = document.getElementById('status-bar');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const waveform = document.getElementById('waveform');
+const micBtn = document.getElementById('mic-btn');
+const micLabel = document.getElementById('mic-label');
+const toast = document.getElementById('toast');
+
+// ============================================================
+// SPEECH SYNTHESIS
+// ============================================================
+function speak(text, priority = false) {
+  return new Promise(resolve => {
+    speakQueue = speakQueue.then(() => new Promise(res => {
+      window.speechSynthesis.cancel();
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.lang = 'fr-FR';
+      utt.rate = 0.95;
+      utt.pitch = 1.0;
+      utt.volume = 1.0;
+
+      // Choisir voix française si disponible
+      const voices = window.speechSynthesis.getVoices();
+      const frVoice = voices.find(v => v.lang.startsWith('fr') && v.localService) ||
+                      voices.find(v => v.lang.startsWith('fr'));
+      if (frVoice) utt.voice = frVoice;
+
+      utt.onend = () => { res(); resolve(); };
+      utt.onerror = () => { res(); resolve(); };
+      window.speechSynthesis.speak(utt);
+    }));
+  });
+}
+
+// Init voix (Android nécessite un appel précoce)
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.addEventListener('voiceschanged', () => {
+    window.speechSynthesis.getVoices();
+  });
+}
+
+// ============================================================
+// STATUS UI
+// ============================================================
+function setStatus(text, mode = 'idle') {
+  statusText.textContent = text;
+  statusBar.className = 'status-bar ' + mode;
+  statusDot.className = 'status-dot ' + (mode === 'playing' ? 'active' : mode === 'listening' ? 'listening' : '');
+  waveform.className = 'waveform ' + (mode === 'playing' ? '' : 'hidden');
+}
+
+function showToast(msg, duration = 2500) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+// ============================================================
+// RADIO PLAYBACK
+// ============================================================
+function selectRadio(id) {
+  const radio = RADIOS[id];
+  if (!radio) return;
+
+  // Marquer bouton actif
+  document.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('playing'));
+  const btn = document.querySelector(`[data-id="${id}"]`);
+  if (btn) btn.classList.add('playing');
+
+  currentRadio = id;
+  audio.src = radio.url;
+  audio.volume = parseFloat(document.getElementById('volume-slider').value);
+  audio.load();
+
+  setStatus(`Chargement de ${radio.name}…`, 'loading');
+  speak(`Chargement de ${radio.name}`);
+
+  audio.play().then(() => {
+    setStatus(`▶ ${radio.name} en cours`, 'playing');
+  }).catch(err => {
+    setStatus(`Erreur de lecture`, 'idle');
+    speak(`Impossible de lire ${radio.name}. Vérifiez votre connexion.`);
+    console.error(err);
+  });
+
+  acquireWakeLock();
+}
+
+function stopRadio() {
+  audio.pause();
+  audio.src = '';
+  currentRadio = null;
+  document.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('playing'));
+  setStatus('Lecture arrêtée', 'idle');
+  speak('Lecture arrêtée');
+  releaseWakeLock();
+}
+
+audio.addEventListener('error', () => {
+  setStatus('Erreur réseau — réessayez', 'idle');
+  speak('Erreur de connexion. Veuillez réessayer.');
+});
+
+audio.addEventListener('waiting', () => {
+  if (currentRadio) setStatus(`Mise en mémoire tampon…`, 'loading');
+});
+
+audio.addEventListener('playing', () => {
+  if (currentRadio) {
+    const name = RADIOS[currentRadio]?.name || '';
+    setStatus(`▶ ${name} en cours`, 'playing');
+  }
+});
+
+// ============================================================
+// VOLUME
+// ============================================================
+function setVolume(val) {
+  audio.volume = parseFloat(val);
+}
+
+// ============================================================
+// MENU VOCAL
+// ============================================================
+function speakMenu() {
+  const names = Object.values(RADIOS).map(r => r.name).join(', ');
+  speak(`Radios disponibles : ${names}. Appuyez sur micro et dites le nom de la radio souhaitée.`);
+  setStatus('Écoute du menu…', 'idle');
+}
+
+function speakHelp() {
+  speak(`Commandes disponibles : dites le nom d'une radio pour la lancer. Dites stop pour arrêter. Dites volume bas ou volume fort pour ajuster. Dites menu pour entendre les radios disponibles.`);
+}
+
+// ============================================================
+// RECONNAISSANCE VOCALE
+// ============================================================
+function initRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    speak('La reconnaissance vocale n\'est pas disponible sur cet appareil.');
+    return null;
+  }
+
+  const rec = new SpeechRecognition();
+  rec.lang = 'fr-FR';
+  rec.continuous = false;
+  rec.interimResults = false;
+  rec.maxAlternatives = 3;
+
+  rec.onresult = (e) => {
+    const results = Array.from(e.results[0]).map(r => r.transcript.toLowerCase().trim());
+    console.log('Reconnu:', results);
+    handleVoiceCommand(results[0]);
+  };
+
+  rec.onerror = (e) => {
+    console.error('Reco error:', e.error);
+    if (e.error === 'no-speech') {
+      setStatus('Aucune parole détectée', 'idle');
+      stopListening();
+      autoRelisten('Je n\'ai rien entendu. Dites le nom d\'une radio.');
+      return;
+    } else if (e.error === 'network') {
+      setStatus('Erreur réseau', 'idle');
+      speak('Connexion requise pour la reconnaissance vocale.');
+    } else if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      setStatus('Micro non autorisé — appuyez sur micro', 'idle');
+      speak('Veuillez autoriser le micro, puis appuyez sur le bouton micro.');
+    } else {
+      setStatus('Erreur micro', 'idle');
+    }
+    stopListening();
+  };
+
+  rec.onend = () => {
+    stopListening();
+  };
+
+  rec.onspeechstart = () => {
+    autoRetryCount = 0;
+    setStatus('Parole détectée…', 'listening');
+  };
+
+  return rec;
+}
+
+function toggleMic() {
+  if (isListening) {
+    stopListening();
+  } else {
+    startListening();
+  }
+}
+
+function startListening() {
+  window.speechSynthesis.cancel();
+  recognition = initRecognition();
+  if (!recognition) return;
+
+  try {
+    recognition.start();
+    isListening = true;
+    micBtn.setAttribute('aria-pressed', 'true');
+    micBtn.classList.add('active');
+    micLabel.textContent = 'Écoute…';
+    setStatus('🎤 Parlez maintenant…', 'listening');
+  } catch(e) {
+    console.error(e);
+    setStatus('Erreur micro', 'idle');
+  }
+}
+
+function stopListening() {
+  if (recognition) {
+    try { recognition.stop(); } catch(e) {}
+    recognition = null;
+  }
+  isListening = false;
+  micBtn.setAttribute('aria-pressed', 'false');
+  micBtn.classList.remove('active');
+  micLabel.textContent = 'Parler';
+  if (!currentRadio) {
+    setStatus('En attente — appuyez sur micro', 'idle');
+  }
+}
+
+// ============================================================
+// TRAITEMENT COMMANDES
+// ============================================================
+function handleVoiceCommand(cmd) {
+  console.log('Commande:', cmd);
+
+  // Stop
+  if (/\b(stop|arrêt|arrêter|pause|fin)\b/.test(cmd)) {
+    stopRadio();
+    return;
+  }
+
+  // Menu
+  if (/\b(menu|liste|radios|quelles radios)\b/.test(cmd)) {
+    speakMenu();
+    return;
+  }
+
+  // Aide
+  if (/\b(aide|help|commandes)\b/.test(cmd)) {
+    speakHelp();
+    return;
+  }
+
+  // Volume
+  if (/\b(volume bas|moins fort|baisse|baisser)\b/.test(cmd)) {
+    const newVol = Math.max(0, audio.volume - 0.2);
+    audio.volume = newVol;
+    document.getElementById('volume-slider').value = newVol;
+    speak('Volume baissé');
+    return;
+  }
+
+  if (/\b(volume fort|plus fort|monte|monter|augment)\b/.test(cmd)) {
+    const newVol = Math.min(1, audio.volume + 0.2);
+    audio.volume = newVol;
+    document.getElementById('volume-slider').value = newVol;
+    speak('Volume augmenté');
+    return;
+  }
+
+  // Recherche radio par mots-clés
+  let found = null;
+  for (const [id, radio] of Object.entries(RADIOS)) {
+    for (const kw of radio.keywords) {
+      if (cmd.includes(kw)) {
+        found = id;
+        break;
+      }
+    }
+    if (found) break;
+  }
+
+  if (found) {
+    autoRetryCount = 0;
+    selectRadio(found);
+  } else {
+    setStatus('Radio non reconnue', 'idle');
+    showToast('Non reconnu : « ' + cmd + ' »');
+    autoRelisten(`Je n'ai pas reconnu cette radio. Dites le nom d'une radio, ou dites menu pour connaître les stations disponibles.`);
+  }
+}
+
+// ============================================================
+// WAKE LOCK
+// ============================================================
+async function acquireWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('WakeLock activé');
+    } catch(e) {
+      console.log('WakeLock refusé:', e);
+    }
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) {
+    wakeLock.release();
+    wakeLock = null;
+  }
+}
+
+// Réacquérir si l'écran se réveille
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && currentRadio && !wakeLock) {
+    await acquireWakeLock();
+  }
+});
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('load', () => {
+  // Annonce initiale légèrement différée (Android)
+  setTimeout(() => {
+    setStatus('Dites le nom d\'une radio…', 'idle');
+    speak('Bonjour, vous avez ouvert Vocal Radio. Dites le nom de la radio que vous voulez écouter.').then(() => {
+      startListening();
+    });
+  }, 800);
+});
+
+// Keyboard nav (PC / switch access)
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && document.activeElement === micBtn) {
+    e.preventDefault();
+    toggleMic();
+  }
+});
+
+// ============================================================
+// ENREGISTREMENT DU SERVICE WORKER (offline + installabilité)
+// ============================================================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      console.log('Service Worker enregistré :', reg.scope);
+    }).catch(err => {
+      console.error('Échec enregistrement Service Worker :', err);
+    });
+  });
+}
+</script>
+
+</body>
+</html>
